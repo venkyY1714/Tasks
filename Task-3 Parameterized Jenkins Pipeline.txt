@@ -1,0 +1,140 @@
+pipeline {
+    agent any
+    
+    tools {
+        jdk 'jdk-17'
+        maven 'maven'
+    }
+
+    parameters {
+        booleanParam(name: 'RUN_PIPELINE', defaultValue: false, description: 'Should the pipeline run?')
+        credentials(name: 'GitHub-Login', defaultValue: 'my-git-creds', description: 'Git credentials for checkout')
+		credentials(name: 'Docker-login', defaultValue: 'docker-hub',description: 'Docker login credentials')
+        choice(name: 'MAVEN_BUILD', choices: ['validate', 'compile', 'test', 'package'], description: 'Select Maven Build to run')
+        string(name: 'DOCKER_IMAGE_NAME', defaultValue: 'dinesh4136/my-app', description: 'Docker image name')
+        string(name: 'DOCKER_IMAGE_TAG', defaultValue: 'latest', description: 'Docker image tag')
+      }
+
+    stages {
+        stage('Check Parameter') {
+            steps {
+                script {
+                    if (!params.RUN_PIPELINE) {
+                        error("RUN_PIPELINE is false — Failing the pipeline as requested.")
+                    } else {
+                        echo "RUN_PIPELINE is true — Proceeding with the pipeline."
+                    }
+                }
+            }
+        }
+        
+        stage('Clean Workspace') {
+            steps {
+                sh '''
+                    echo "Cleaning up Docker and workspace..."
+                    docker system prune -af || true
+                    rm -rf /tmp/trivy* || true
+                    df -h
+                '''
+            }
+        }
+
+        stage('Git Checkout') {
+            when {
+                expression { return params.RUN_PIPELINE }
+            }
+            steps {
+                withCredentials([usernamePassword(credentialsId: params["GitHub-Login"], usernameVariable: 'GIT_USER', passwordVariable: 'GIT_PASS')]) {
+                    git url: 'https://github.com/dinesh-4136/JavaWebCalculator.git',
+                        credentialsId: params["GitHub-Login"],
+                        branch: 'main'
+                }
+            }
+        }
+
+        stage('Maven Build') {
+            when {
+                expression { return params.RUN_PIPELINE }
+            }
+            steps {
+                echo "Running Maven Build: ${params.MAVEN_BUILD}"
+                sh "mvn ${params.MAVEN_BUILD}"
+            }
+        }
+		
+		stage('SonarQube Analysis') {
+			environment {
+				scannerHome = tool 'sonar'
+			}
+			steps {
+				withSonarQubeEnv('sonar') {
+					sh '''
+						${scannerHome}/bin/sonar-scanner -X -Dsonar.projectKey=JavaWeb \
+						-Dsonar.projectName=JavaWeb \
+						-Dsonar.projectVersion=1.0 \
+						-Dsonar.sources=src/ \
+						-Dsonar.java.binaries=. \
+						-Dsonar.junit.reportsPath=target/surefire-reports/ \
+						-Dsonar.jacoco.reportsPath=target/jacoco.exec \
+						-Dsonar.java.checkstyle.reportPaths=target/checkstyle-result.xml
+					'''
+				}
+				timeout(time: 5, unit: 'MINUTES') {
+					waitForQualityGate abortPipeline: true
+				}
+			}
+		}
+
+        stage('Docker Build') {
+            when {
+                expression { return params.RUN_PIPELINE }
+            }
+            steps {
+                echo "Building Docker image: ${params.DOCKER_IMAGE_NAME}:${params.DOCKER_IMAGE_TAG}"
+                sh "docker build -t ${params.DOCKER_IMAGE_NAME}:${params.DOCKER_IMAGE_TAG} ."
+            }
+        }
+		
+	    stage('Trivy Scan') {
+            when {
+                expression { return params.RUN_PIPELINE }
+            }
+            environment {
+                DOCKER_IMAGE_NAME = "${params.DOCKER_IMAGE_NAME}"
+                DOCKER_IMAGE_TAG  = "${params.DOCKER_IMAGE_TAG}"
+            }
+            steps {
+                echo "Running Trivy scan using Docker..."
+                sh '''
+                    docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+                    aquasec/trivy:latest image ${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG}
+                '''
+            }
+        }
+
+        stage('Docker Push') {
+            when {
+                expression { return params.RUN_PIPELINE }
+            }
+            steps {
+                echo "Pushing Docker image to registry"
+                withCredentials([usernamePassword(credentialsId: params["Docker-login"], usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                sh '''
+                    echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
+                    docker push ${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG}
+                '''
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            echo 'Slack Notifications.'
+            slackSend(
+                channel: '#devops-aws-jenkins',
+                message: "*${currentBuild.currentResult}:*\nMore info at: ${env.BUILD_URL}"
+            )
+        }
+    }
+}

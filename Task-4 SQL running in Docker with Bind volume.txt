@@ -1,0 +1,106 @@
+SQL running in Docker with Bind volume
+
+SQL running in Docker with Bind volume:
+
+Running SQL and adding data into SQL database:
+	-first create an instance
+	-then install and run the docker
+		: sh docker.sh
+	-then run the docker command to run the mysql container
+		: docker run --name mysql -d -p 3306:3306 -e MYSQL_ROOT_PASSWORD=123 mysql:lts
+	-then for accessing the mqsql login into the container
+		: docker exec -it mysql /bin/bash
+	-then login into the sql as root
+		: mysql -u root -p
+	-then enter the password for sql login
+		: 123
+	-then create a user in sql
+		: create user 'user1'@'%' identified by '123';
+	-then grant the permissions to user
+		: grant all privileges on mydatabase.* to 'user1'@'%';
+		  flush privileges;
+	-to view the created user
+		: select user host from mysql.user;
+	-then create a database
+		: CREATE DATABASE mydatabase;
+	-for accessing database, login to database
+		: use mydatabase;
+	-then create an table in the database
+		: create table users (id int auto_increment primary key, name varchar(100),	email varchar(100),	created_at timestamp default current_timestamp );
+	-then add data into table
+		: insert into users (name, email) values ('abc', 'abc@gmail.com');
+	-to view data in the users table
+		: select * from users;
+		
+	-then logout from the database
+		: exit
+	-and also exit from the container
+		: exit
+	-then delete the mysql container
+		: docker rm -f mysql
+		
+Running SQL with Bind volume and adding data into SQL database:
+	-first shift user to root user
+		: sudo -id
+	-then change the directory to /opt
+		: cd /opt
+	-then create a directory for bind volume
+		: mkdir sql-volume
+	-then change the owner to ubuntu
+		: chown -R ubuntu:ubuntu sql-volume
+	-then shift from root user to ubuntu user
+		: exit
+	-then run the container for mysql with bind volume
+		: docker run --name mysql -d -p 3306:3306 -v /opt/sql-volume:/var/lib/mysql -e MYSQL_ROOT_PASSWORD=123 mysql:lts
+	-then for accessing the mqsql login into the container
+		: docker exec -it mysql /bin/bash
+	-then login into the sql as root
+		: mysql -u root -p
+	-then enter the password for sql login
+		: 123
+	-then create a user in sql
+		: create user 'user1'@'%' identified by '123';
+	-then grant the permissions to user
+		: grant all privleges on mydatabase.* to 'user1'@'%';
+		  flush privileges;
+	-to view the created user
+		: select user host from mysql.user;
+	-then create a database
+		: create database 'mydatabase';
+	-for accessing database, login to database
+		: use mydatabase;
+	-then create an table in the database
+		: create table users (id int auto_increment primary key, name varchar(100),	email varchar(100),	created_at timestamp default current_timestamp );
+	-then add data into table
+		: insert into users (name, email) values ('abc', 'abc@gmail.com');
+		: insert into users (name, email) values ('123', '123@gmail.com');
+	-to view data in the users table
+		: select * from users;
+		
+	-then logout from the database
+		: exit
+	-and also exit from the container
+		: exit
+	-then delete the mysql container
+		: docker rm -f mysql
+	
+-now again we can create the new sql container with bind volume and restore the data of the deleted container
+	-then run the container for mysql with bind volume
+		: docker run --name mysql -d -p 3306:3306 -v /opt/sql-volume:/var/lib/mysql -e MYSQL_ROOT_PASSWORD=123 mysql:lts
+	-then for accessing the mqsql login into the container
+		: docker exec -it mysql /bin/bash
+	-then login into the sql as root
+		: mysql -u root -p
+	-then enter the password for sql login
+		: 123
+	-then create a user in sql
+		: create user 'user1'@'%' identified by '123';
+	-then grant the permissions to user
+		: grant all privleges on mydatabase.* to 'user1'@'%';
+		  flush privileges;
+	-to view the created user
+		: select user host from mysql.user;
+	-for accessing previously created database, login to database
+		: use mydatabase;
+	-then check the data of the restored database
+		: select * from users;

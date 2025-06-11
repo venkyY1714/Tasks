@@ -1,0 +1,76 @@
+SonarQube with NodeJS
+
+You're currently hardcoding sensitive credentials like your MySQL user and password in your script, which is a security risk. Instead, these should be passed securely using environment variables or a secrets manager.
+
+Use Environment Variables
+1. Update your script to read from environment variables
+	user: 'admin',  
+  	password: 'Singham11',
+	to
+	user: process.env.DB_USER,  
+  	password: process.env.DB_PASS,
+
+2. Create a .env file in your project root (add this to .gitignore)
+	DB_USER=admin
+	DB_PASS=Singham11
+
+3. Add .env to .gitignore
+	.env
+
+4. Install dotenv and load the .env file
+	npm install dotenv
+
+5. Then add this line at the very top of your main server file (server.js)
+	require('dotenv').config();
+
+
+pipeline {
+	agent any
+	
+	tools {
+		nodejs 'nodejs-18'
+	}
+	
+	environment {
+		SONAR_SCANNER = tool 'sonar'
+		SONARQUBE_SERVER = 'sonar'
+	}
+	
+	stages {
+		stage('Checkout SCM') {
+			steps {
+				checkout scmGit(branches: [[name: '*/feature-1']], extensions: [], userRemoteConfigs: [[credentialsId: 'GitHub-Cred', url: 'https://github.com/dinesh-4136/nginxwebdb.git']])
+			}
+		}
+		
+		stage('install packages') {
+			steps {
+				sh 'npm install'
+				sh 'npm install dotenv'
+			}
+		}
+		
+		stage('Code Analysis with SonarQube') {
+			steps {
+				withSonarQubeEnv("${SONARQUBE_SERVER}") {
+					sh '''
+						${SONAR_SCANNER}/bin/sonar-scanner \
+						-Dsonar.projectKey=nginxwebdb \
+						-Dsonar.projectName=nginxwebdb-node \
+						-Dsonar.projectVersion=1.0 \
+						-Dsonar.sources=. \
+						-Dsonar.exclusions=node_modules/** \
+					'''
+				}
+			}
+		}
+		
+		stage('Quality Gate') {
+			steps {
+				timeout(time: 5, unit: 'MINUTES') {
+					waitForQualityGate abortPipeline: true
+				}
+			}
+		}
+	}
+}

@@ -1,0 +1,179 @@
+Terraform scripts for creating EC2 instance with Jenkins and EBS mounting
+
+terraform.tf
+terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "5.97.0"
+    }
+  }
+}
+==================================================================================
+provider.tf
+provider "aws" {
+  profile = "default"
+  region  = var.region
+}
+==================================================================================
+resource.tf
+resource "aws_security_group" "jenkins_sg" {
+  name        = "jenkins-sg"
+  description = "allow SSH and Jenkins"
+
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    from_port   = 8080
+    to_port     = 8080
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+resource "aws_ebs_volume" "my_ebs_volume" {
+  availability_zone = var.aws-az
+  size              = 20
+  type              = "gp3"
+
+  tags = {
+    Name = "My-EBS-Volume"
+  }
+}
+
+resource "aws_instance" "myinstance" {
+  ami                    = data.aws_ami.ubuntu.id
+  instance_type          = var.instance-type
+  key_name               = var.key-pair
+  availability_zone      = var.aws-az
+  vpc_security_group_ids = [aws_security_group.jenkins_sg.id]
+
+  # Root volume configuration
+  root_block_device {
+    volume_size = 20            # 20 GB
+    volume_type = "gp3"         # Can also use "gp2"
+    delete_on_termination = true
+  }
+
+  user_data = <<-EOF
+              #!/bin/bash
+              # Script 1: Install Jenkins
+              sudo apt update -y
+              sudo apt install -y git
+              git clone https://github.com/prudhvisurya996/Installations.git
+              cd Installations
+              chmod +x jenkins.sh
+              ./jenkins.sh >> /var/log/jenkins-install.log 2>&1
+
+              # Script 2: Prepare and mount EBS volume
+              sudo mkfs.xfs /dev/xvdf
+              sudo mount /dev/xvdf /var/lib/jenkins
+              echo "/dev/xvdf /var/lib/jenkins ext4 defaults,nofail 0 2" | sudo tee -a /etc/fstab
+              EOF
+
+  tags = {
+    Name = var.instance-name
+  }
+}
+
+resource "aws_volume_attachment" "ebs_attachment" {
+  device_name = "/dev/xvdf"
+  volume_id   = aws_ebs_volume.my_ebs_volume.id
+  instance_id = aws_instance.myinstance.id
+  force_detach = true
+}
+==================================================================================
+variable.tf
+variable "region" {
+  description = "provide region"
+  type        = string
+  default     = "ap-south-1"
+}
+variable "instance-type" {
+  description = "provide type of instance"
+  type        = string
+  default     = "t2.large"
+}
+variable "key-pair" {
+  description = "provide key pair"
+  type        = string
+  default     = "Maven"
+}
+variable "aws-az" {
+  description = "az for instance"
+  type        = string
+  default     = "ap-south-1a"
+}
+variable "instance-name" {
+  description = "provide name for instance"
+  type        = string
+  default     = "EC2-EBS"
+}
+==================================================================================
+backend.tf
+terraform {
+  backend "s3" {
+    bucket  = "tf-task-bkt"
+    key     = "backend/terraform.tfstate"
+    region  = "ap-south-1"
+    encrypt = true
+  }
+}
+==================================================================================
+output.tf
+output "summary" {
+  value = {
+    ec2_instance_id         = aws_instance.myinstance.id
+    ec2_instance_public_ip  = aws_instance.myinstance.public_ip
+    ec2_instance_private_ip = aws_instance.myinstance.private_ip
+    security_group_id       = aws_security_group.jenkins_sg.id
+    ebs_volume_id           = aws_ebs_volume.my_ebs_volume.id
+    ebs_device_attachment   = aws_volume_attachment.ebs_attachment.device_name
+    root_volume_size        = aws_instance.myinstance.root_block_device[0].volume_size
+  }
+}
+==================================================================================
+data.tf
+# Get the latest Ubuntu 22.04 LTS AMI from AWS
+data "aws_ami" "ubuntu" {
+  most_recent = true
+  owners      = ["099720109477"] # Canonical (Ubuntu)
+
+  filter {
+    name   = "name"
+    values = ["ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"]
+  }
+
+  filter {
+    name   = "virtualization-type"
+    values = ["hvm"]
+  }
+
+  filter {
+    name   = "architecture"
+    values = ["x86_64"]
+  }
+}
+==================================================================================
+Output
+summary = {
+  "ebs_device_attachment" = "/dev/xvdf"
+  "ebs_volume_id" = "vol-02d6e42e2b4760392"
+  "ec2_instance_id" = "i-0d65413a52ab43dd5"
+  "ec2_instance_private_ip" = "172.31.47.129"
+  "ec2_instance_public_ip" = "65.2.148.210"
+  "root_volume_size" = 20
+  "security_group_id" = "sg-08779e4c4a4dc24b3"
+}
