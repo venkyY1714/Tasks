@@ -56,8 +56,8 @@ echo "🔐 Vault Token: $VAULT_TOKEN"
 vault secrets enable -path=awscreds kv-v2 || echo "🔁 KV engine already enabled."
 
 # === STORE AWS IAM CREDENTIALS IN VAULT ===
-AWS_ACCESS_KEY="AKIA6IWCNKHEWC6NLZNI"
-AWS_SECRET_KEY="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"
+AWS_ACCESS_KEY="<Access_Key>"
+AWS_SECRET_KEY="<Secret_Access_Key>"
 
 vault kv put awscreds/terraform \
   AWS_ACCESS_KEY_ID="$AWS_ACCESS_KEY" \
