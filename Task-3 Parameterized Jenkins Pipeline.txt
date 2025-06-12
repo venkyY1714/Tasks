@@ -5,6 +5,15 @@ pipeline {
         jdk 'jdk-17'
         maven 'maven'
     }
+	
+	environment {
+        NEXUS_VERSION        = "nexus3"
+        NEXUS_PROTOCOL       = "http"
+        NEXUS_URL            = "3.149.249.21:8081"
+        NEXUS_REPOSITORY     = "Jenkins-Artifact"
+        NEXUS_CREDENTIAL_ID  = "Nexus"
+        ARTVERSION           = "${env.BUILD_ID}"
+    }
 
     parameters {
         booleanParam(name: 'RUN_PIPELINE', defaultValue: false, description: 'Should the pipeline run?')
@@ -45,7 +54,7 @@ pipeline {
             }
             steps {
                 withCredentials([usernamePassword(credentialsId: params["GitHub-Login"], usernameVariable: 'GIT_USER', passwordVariable: 'GIT_PASS')]) {
-                    git url: 'https://github.com/dinesh-4136/JavaWebCalculator.git',
+                    git url: 'https://github.com/dinesh-4136/vprofile-project.git',
                         credentialsId: params["GitHub-Login"],
                         branch: 'main'
                 }
@@ -62,28 +71,51 @@ pipeline {
             }
         }
 		
-		stage('SonarQube Analysis') {
-			environment {
-				scannerHome = tool 'sonar'
-			}
-			steps {
-				withSonarQubeEnv('sonar') {
-					sh '''
-						${scannerHome}/bin/sonar-scanner -X -Dsonar.projectKey=JavaWeb \
-						-Dsonar.projectName=JavaWeb \
-						-Dsonar.projectVersion=1.0 \
-						-Dsonar.sources=src/ \
-						-Dsonar.java.binaries=. \
-						-Dsonar.junit.reportsPath=target/surefire-reports/ \
-						-Dsonar.jacoco.reportsPath=target/jacoco.exec \
-						-Dsonar.java.checkstyle.reportPaths=target/checkstyle-result.xml
-					'''
-				}
-				timeout(time: 5, unit: 'MINUTES') {
-					waitForQualityGate abortPipeline: true
-				}
-			}
-		}
+		stage('CODE ANALYSIS with SONAQUBE') {
+          
+		  environment {
+             scannerHome = tool 'sonar'
+          }
+
+          steps {
+            withSonarQubeEnv('sonar') {
+               sh '''${scannerHome}/bin/sonar-scanner -Dsonar.projectKey=vprofile \
+                   -Dsonar.projectName=vprofile-repo \
+                   -Dsonar.projectVersion=1.0 \
+                   -Dsonar.sources=src/ \
+                   -Dsonar.java.binaries=target/test-classes/com/visualpathit/account/controllerTest/ \
+                   -Dsonar.junit.reportsPath=target/surefire-reports/ \
+                   -Dsonar.jacoco.reportsPath=target/jacoco.exec \
+                   -Dsonar.java.checkstyle.reportPaths=target/checkstyle-result.xml'''
+            }
+
+            timeout(time: 10, unit: 'MINUTES') {
+               waitForQualityGate abortPipeline: true
+            }
+          }
+        }
+		
+		stage('Upload Artifact to Nexus') {
+            steps {
+                nexusArtifactUploader(
+                    nexusVersion: "${env.NEXUS_VERSION}",
+                    protocol: "${env.NEXUS_PROTOCOL}",
+                    nexusUrl: "${env.NEXUS_URL}",
+                    version: "${env.ARTVERSION}",
+                    groupId: "com.mycompany.vprofile",
+                    repository: "${env.NEXUS_REPOSITORY}",
+                    credentialsId: "${env.NEXUS_CREDENTIAL_ID}",
+                    artifacts: [
+                        [
+                            artifactId: "vprofile",
+                            classifier: "",
+                            file: "target/vprofile-v2.war",
+                            type: "war"
+                        ]
+                    ]
+                )
+            }
+        }
 
         stage('Docker Build') {
             when {
