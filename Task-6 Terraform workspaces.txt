@@ -138,7 +138,7 @@ terraform apply -var-file=env_vars/dev.tfvars
 terraform destroy -var-file=env_vars/dev.tfvars
 Step-by-step commands to run UAT:
 	cd terraform
-terraform init -backend-config=backend/uat.tfbackend
+terraform init -migrate-state -backend-config=backend/uat.tfbackend
 terraform workspace new uat || terraform workspace select uat
 terraform plan -var-file=env_vars/uat.tfvars
 terraform apply -var-file=env_vars/uat.tfvars
@@ -146,7 +146,7 @@ terraform destroy -var-file=env_vars/uat.tfvars
 
 Step-by-step commands to run SIT:
 	cd terraform
-terraform init -backend-config=backend/sit.tfbackend
+terraform init -migrate-state -backend-config=backend/sit.tfbackend
 terraform workspace new sit || terraform workspace select sit
 terraform plan -var-file=env_vars/sit.tfvars
 terraform apply -var-file=env_vars/sit.tfvars
@@ -154,7 +154,7 @@ terraform destroy -var-file=env_vars/sit.tfvars
 
 Step-by-step commands to run PROD:
 	cd terraform
-terraform init -backend-config=backend/prod.tfbackend
+terraform init -migrate-state -backend-config=backend/prod.tfbackend
 terraform workspace new prod || terraform workspace select prod
 terraform plan -var-file=env_vars/prod.tfvars
 terraform apply -var-file=env_vars/prod.tfvars
